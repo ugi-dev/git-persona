@@ -9,7 +9,7 @@ import {
   setConfiguredIdentities,
   setRecentIdentities
 } from './settings';
-import { Identity, IdentityPreset } from './types';
+import type { GitConfigOptions, Identity, IdentityPreset } from './types';
 
 export const collectIdentityInputs = async (current: Identity, repoPath: string): Promise<Identity | undefined> => {
   const picked = await pickPresetIdentity(repoPath, current);
@@ -58,7 +58,7 @@ export const findBestPresetMatch = async (repoPath: string): Promise<IdentityPre
   return presets.length === 1 ? presets[0] : undefined;
 };
 
-const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<Identity | undefined> => {
+const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<IdentityPreset | undefined> => {
   const presets = getConfiguredIdentities();
   const recent = getRecentIdentities();
   if (presets.length === 0 && recent.length === 0) {
@@ -66,7 +66,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
   }
 
   type IdentityPickItem = vscode.QuickPickItem & {
-    preset?: Identity;
+    preset?: IdentityPreset;
     custom?: boolean;
     addPreset?: boolean;
     presetIndex?: number;
@@ -98,7 +98,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         label: presetLabel && presetLabel.length > 0 ? presetLabel : `${preset.name} <${preset.email}>`,
         description: presetLabel && presetLabel.length > 0 ? `${preset.name} <${preset.email}>` : undefined,
         detail: isCurrent ? 'Currently configured for this repository' : undefined,
-        preset: { name: preset.name, email: preset.email },
+        preset,
         presetIndex: index,
         isSavedPreset: true,
         isCurrentConfigured: isCurrent,
@@ -327,11 +327,13 @@ const editPresetIdentity = async (repoPath: string, preset: IdentityPreset): Pro
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+  const options = await collectPresetOptionsInputs(repoPath, preset.options);
 
   return {
     ...updatedIdentity,
     label: label?.trim() || undefined,
-    match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0]
+    match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0],
+    options
   };
 };
 
@@ -387,11 +389,13 @@ const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefi
       .split(',')
       .map((item) => item.trim())
       .filter((item) => item.length > 0);
+    const options = await collectPresetOptionsInputs(repoPath);
 
     createdPresets.push({
       ...created,
       label: label?.trim() || undefined,
-      match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0]
+      match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0],
+      options
     });
 
     const addAnother = await vscode.window.showQuickPick(['Add another preset', 'Finish'], {
@@ -431,4 +435,108 @@ const toMatchPatterns = (match: string | string[] | undefined): string[] => {
   return match
     .map((item) => item.trim().toLowerCase())
     .filter((item) => item.length > 0);
+};
+
+const GIT_CONFIG_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9.-]*$/;
+
+const collectPresetOptionsInputs = async (
+  repoPath: string,
+  currentOptions?: GitConfigOptions
+): Promise<GitConfigOptions | undefined> => {
+  const options: GitConfigOptions = { ...(currentOptions ?? {}) };
+  const title = `Git Persona (${path.basename(repoPath)})`;
+
+  while (true) {
+    const summary = Object.keys(options).length === 0
+      ? 'No extra git options set'
+      : `Current: ${Object.keys(options).join(', ')}`;
+
+    const choices = [
+      { label: 'Set signing key (user.signingkey)', value: 'signing' as const },
+      { label: 'Add/update custom option (dot-path)', value: 'custom' as const },
+      { label: 'Remove an option', value: 'remove' as const },
+      { label: 'Finish', value: 'done' as const }
+    ];
+
+    const selected = await vscode.window.showQuickPick(choices, {
+      title,
+      placeHolder: `Extra git config options. ${summary}`,
+      ignoreFocusOut: true
+    });
+    if (!selected || selected.value === 'done') {
+      break;
+    }
+
+    if (selected.value === 'signing') {
+      const signingKey = await vscode.window.showInputBox({
+        title,
+        prompt: 'Git user.signingkey value (leave empty to clear)',
+        value: options['user.signingkey'] ?? '',
+        ignoreFocusOut: true
+      });
+      if (signingKey === undefined) {
+        continue;
+      }
+
+      const normalized = signingKey.trim();
+      if (normalized.length === 0) {
+        delete options['user.signingkey'];
+      } else {
+        options['user.signingkey'] = normalized;
+      }
+      continue;
+    }
+
+    if (selected.value === 'custom') {
+      const key = await vscode.window.showInputBox({
+        title,
+        prompt: 'Git config key (dot-path syntax, e.g. commit.gpgsign)',
+        ignoreFocusOut: true,
+        validateInput: (input) => {
+          const normalized = input.trim();
+          if (!normalized.includes('.') || !GIT_CONFIG_KEY_PATTERN.test(normalized)) {
+            return 'Use a valid dot-path key, for example: user.signingkey';
+          }
+          return undefined;
+        }
+      });
+      if (!key) {
+        continue;
+      }
+
+      const normalizedKey = key.trim();
+      const value = await vscode.window.showInputBox({
+        title,
+        prompt: `Value for ${normalizedKey}`,
+        value: options[normalizedKey] ?? '',
+        ignoreFocusOut: true,
+        validateInput: (input) => input.trim().length === 0 ? 'Value is required.' : undefined
+      });
+      if (!value) {
+        continue;
+      }
+
+      options[normalizedKey] = value.trim();
+      continue;
+    }
+
+    const keys = Object.keys(options);
+    if (keys.length === 0) {
+      void vscode.window.showInformationMessage('Git Persona: no extra options to remove.');
+      continue;
+    }
+
+    const keyToRemove = await vscode.window.showQuickPick(keys, {
+      title,
+      placeHolder: 'Select an option to remove',
+      ignoreFocusOut: true
+    });
+    if (!keyToRemove) {
+      continue;
+    }
+
+    delete options[keyToRemove];
+  }
+
+  return Object.keys(options).length > 0 ? options : undefined;
 };

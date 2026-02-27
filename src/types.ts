@@ -3,9 +3,13 @@ export type Identity = {
   email: string;
 };
 
+/** Extra git config key-value options (e.g. user.signingkey). */
+export type GitConfigOptions = Record<string, string>;
+
 export interface IdentityPreset extends Identity {
   label?: string;
   match?: string | string[];
+  options?: GitConfigOptions;
 }
 
 export type RepoStatus = {
