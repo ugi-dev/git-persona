@@ -1,0 +1,172 @@
+{
+	"name": "git-persona",
+	"displayName": "Git Persona",
+	"description": "Enforce per-repo git user.name and user.email before you work.",
+	"version": "0.0.1",
+	"publisher": "ugi-dev",
+	"license": "MIT",
+	"homepage": "https://ugi.dev",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ugi-dev/git-persona"
+	},
+	"engines": {
+		"vscode": "^1.90.0"
+	},
+	"categories": [
+		"SCM",
+		"Other"
+	],
+	"activationEvents": [
+		"onStartupFinished",
+		"onCommand:gitPersona.configureRepoIdentity",
+		"onCommand:gitPersona.openRepoSettings",
+		"onCommand:gitPersona.toggleRepositoryIgnore",
+		"onCommand:gitPersona.fixActiveRepository"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "gitPersona.configureRepoIdentity",
+				"title": "Git Persona: Configure Repository Identity"
+			},
+			{
+				"command": "gitPersona.openRepoSettings",
+				"title": "Git Persona: Open Workspace Identity Settings"
+			},
+			{
+				"command": "gitPersona.toggleRepositoryIgnore",
+				"title": "Git Persona: Toggle Ignore Repository"
+			},
+			{
+				"command": "gitPersona.fixActiveRepository",
+				"title": "Git Persona: Fix Active Repository Identity"
+			}
+		],
+		"configuration": {
+			"title": "Git Persona",
+			"properties": {
+				"gitPersona.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Enable identity checks when opening repositories."
+				},
+				"gitPersona.blockUntilConfigured": {
+					"type": "boolean",
+					"default": false,
+					"description": "When true, keep prompting until identity is configured for each repository."
+				},
+				"gitPersona.autoApplyBestMatch": {
+					"type": "boolean",
+					"default": true,
+					"description": "When true, auto-apply the best matching identity preset when identity is missing or invalid."
+				},
+				"gitPersona.statusBarEnabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show current repository identity status in the status bar."
+				},
+				"gitPersona.checkIntervalMs": {
+					"type": "number",
+					"default": 0,
+					"minimum": 0,
+					"description": "If > 0, periodically re-check repository identities at this interval in milliseconds."
+				},
+				"gitPersona.maxRecentIdentities": {
+					"type": "number",
+					"default": 8,
+					"minimum": 1,
+					"maximum": 30,
+					"description": "Maximum number of recently used identities to remember in workspace settings."
+				},
+				"gitPersona.allowedDomains": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "string"
+					},
+					"description": "Optional email domain allow-list (for example: company.com). Empty means any domain."
+				},
+				"gitPersona.ignoredRepositories": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "string"
+					},
+					"description": "Absolute repository paths ignored by Git Persona checks."
+				},
+				"gitPersona.identities": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "object",
+						"required": [
+							"name",
+							"email"
+						],
+						"properties": {
+							"label": {
+								"type": "string",
+								"description": "Optional display label for this identity preset."
+							},
+							"name": {
+								"type": "string",
+								"description": "Git user.name value."
+							},
+							"email": {
+								"type": "string",
+								"description": "Git user.email value."
+							},
+							"match": {
+								"description": "Optional match string or list. If it appears in repo path/name/remote URL, this preset can be auto-selected.",
+								"anyOf": [
+									{
+										"type": "string"
+									},
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								]
+							}
+						}
+					},
+					"description": "Identity presets shown when configuring a repository. Example: [{\"label\":\"Work\",\"name\":\"Jane Dev\",\"email\":\"jane@company.com\",\"match\":[\"github.com/work-org\",\"/work/\"]}]."
+				},
+				"gitPersona.recentIdentities": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "object",
+						"required": [
+							"name",
+							"email"
+						],
+						"properties": {
+							"name": {
+								"type": "string"
+							},
+							"email": {
+								"type": "string"
+							}
+						}
+					},
+					"description": "Automatically maintained list of recently used identities."
+				}
+			}
+		}
+	},
+	"scripts": {
+		"build": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"lint": "tsc --noEmit -p ./"
+	},
+	"devDependencies": {
+		"@types/node": "^20.14.9",
+		"@types/vscode": "^1.90.0",
+		"typescript": "^5.5.4"
+	}
+}
