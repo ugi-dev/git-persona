@@ -12,7 +12,7 @@ import {
   setIgnoredRepositories
 } from './settings';
 import { updateStatusBar } from './status-bar';
-import { RepoStatus } from './types';
+import type { IdentityPreset, RepoStatus } from './types';
 
 const SESSION_SKIP_KEY = 'gitPersona.session.skippedRepos';
 
@@ -251,7 +251,8 @@ const promptAndApplyIdentity = async (
     return isConfigured;
   }
 
-  await setRepoIdentity(repoPath, nextIdentity);
+  const options = (nextIdentity as IdentityPreset).options;
+  await setRepoIdentity(repoPath, nextIdentity, options);
   void vscode.window.showInformationMessage(
     `Git Persona: identity saved for ${repoName}: ${nextIdentity.name} <${nextIdentity.email}>.`
   );
@@ -275,7 +276,7 @@ const tryAutoApplyIdentity = async (repoPath: string, status: RepoStatus): Promi
     return true;
   }
 
-  await setRepoIdentity(repoPath, { name: preset.name, email: preset.email });
+  await setRepoIdentity(repoPath, preset, preset.options);
   const label = preset.label?.trim() || `${preset.name} <${preset.email}>`;
   void vscode.window.showInformationMessage(
     `Git Persona: auto-applied ${label} to ${path.basename(repoPath)}.`

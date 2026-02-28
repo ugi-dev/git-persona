@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { Identity, IdentityPreset } from './types';
+import type { Identity, IdentityPreset, GitConfigOptions } from './types';
 
 const RECENT_IDENTITIES_KEY = 'recentIdentities';
 
@@ -94,7 +94,8 @@ export const getConfiguredIdentities = (): IdentityPreset[] => {
       continue;
     }
 
-    identities.push({ name, email, label, match });
+    const options = normalizeOptions(candidate.options);
+    identities.push({ name, email, label, match, ...(Object.keys(options).length > 0 ? { options } : {}) });
   }
 
   return identities;
@@ -153,6 +154,21 @@ export const rememberRecentIdentity = async (identity: Identity): Promise<void> 
     .slice(0, Math.max(1, maxRecent));
 
   await setRecentIdentities(next);
+};
+
+const normalizeOptions = (value: unknown): GitConfigOptions => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  const options: GitConfigOptions = {};
+  for (const key of Object.keys(record)) {
+    const v = record[key];
+    if (typeof v === 'string' && key.trim().length > 0) {
+      options[key.trim()] = v.trim();
+    }
+  }
+  return options;
 };
 
 const normalizeMatchValue = (value: unknown): string | string[] | undefined => {

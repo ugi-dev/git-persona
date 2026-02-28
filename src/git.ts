@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { Identity } from './types';
+import type { Identity, GitConfigOptions } from './types';
 import { rememberRecentIdentity } from './settings';
 
 const execFileAsync = promisify(execFile);
@@ -48,9 +48,18 @@ export const getMissingFields = (identity: Identity): Array<'name' | 'email'> =>
   return missing;
 };
 
-export const setRepoIdentity = async (repoPath: string, identity: Identity): Promise<void> => {
+export const setRepoIdentity = async (
+  repoPath: string,
+  identity: Identity,
+  options?: GitConfigOptions
+): Promise<void> => {
   await runGit(['config', '--local', 'user.name', identity.name], repoPath);
   await runGit(['config', '--local', 'user.email', identity.email], repoPath);
+  if (options && Object.keys(options).length > 0) {
+    for (const [key, value] of Object.entries(options)) {
+      await runGit(['config', '--local', key, value], repoPath);
+    }
+  }
   await rememberRecentIdentity(identity);
 };
 
