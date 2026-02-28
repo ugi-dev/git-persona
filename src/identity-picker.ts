@@ -200,12 +200,16 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         const allPresets = getConfiguredIdentities();
         const target = allPresets[event.item.presetIndex];
         if (!target) {
+          isHandlingItemButton = false;
+          quickPick.show();
           return;
         }
 
         if (event.button === editButton) {
           const edited = await editPresetIdentity(repoPath, target);
           if (!edited) {
+            isHandlingItemButton = false;
+            quickPick.show();
             return;
           }
 
@@ -243,12 +247,16 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         const allRecent = getRecentIdentities();
         const target = allRecent[event.item.recentIndex];
         if (!target) {
+          isHandlingItemButton = false;
+          quickPick.show();
           return;
         }
 
         if (event.button === editButton) {
           const edited = await collectCustomIdentityInputs(target, repoPath);
           if (!edited) {
+            isHandlingItemButton = false;
+            quickPick.show();
             return;
           }
 
