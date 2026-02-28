@@ -11,15 +11,50 @@ import {
 } from './settings';
 import type { GitConfigOptions, Identity, IdentityPreset } from './types';
 
+// --- Module-level types ---
+
+type IdentityPickItem = vscode.QuickPickItem & {
+  preset?: IdentityPreset;
+  custom?: boolean;
+  addPreset?: boolean;
+  presetIndex?: number;
+  recentIndex?: number;
+  isCurrentConfigured?: boolean;
+};
+
+// --- Module-level constants ---
+
+const CURRENTLY_CONFIGURED_DETAIL = 'Currently configured for this repository';
+const DUPLICATE_IDENTITY_WARNING = 'Git Persona: an identity with that name/email already exists.';
+const EMPTY_IDENTITY: Identity = { name: '', email: '' };
+
+// --- Module-level helpers ---
+
+const presetDisplayLabel = (preset: IdentityPreset): string => {
+  const label = preset.label?.trim();
+  return label && label.length > 0 ? label : `${preset.name} <${preset.email}>`;
+};
+
+const parseMatchInput = (raw: string): string | string[] | undefined => {
+  const parts = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  return parts.length > 1 ? parts : parts[0];
+};
+
+const toMatchPatterns = (match: string | string[] | undefined): string[] => {
+  if (!match) return [];
+  const patterns = typeof match === 'string' ? [match] : match;
+  return patterns.map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0);
+};
+
+// --- Exports ---
+
 export const collectIdentityInputs = async (current: Identity, repoPath: string): Promise<Identity | undefined> => {
-  return pickPresetIdentity(repoPath, current);
+  return pickPresetIdentity(current, repoPath);
 };
 
 export const findBestPresetMatch = async (repoPath: string): Promise<IdentityPreset | undefined> => {
   const presets = getConfiguredIdentities();
-  if (presets.length === 0) {
-    return undefined;
-  }
+  if (presets.length === 0) return undefined;
 
   const remotes = await getRemoteUrls(repoPath);
   const fingerprint = [repoPath, path.basename(repoPath), ...remotes].join('\n').toLowerCase();
@@ -29,9 +64,7 @@ export const findBestPresetMatch = async (repoPath: string): Promise<IdentityPre
 
   for (const preset of presets) {
     const patterns = toMatchPatterns(preset.match);
-    if (patterns.length === 0) {
-      continue;
-    }
+    if (patterns.length === 0) continue;
 
     let score = 0;
     for (const pattern of patterns) {
@@ -46,24 +79,17 @@ export const findBestPresetMatch = async (repoPath: string): Promise<IdentityPre
     }
   }
 
-  if (bestPreset) {
-    return bestPreset;
-  }
-
-  return presets.length === 1 ? presets[0] : undefined;
+  return bestPreset ?? (presets.length === 1 ? presets[0] : undefined);
 };
 
-const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<Identity | undefined> => {
-  type IdentityPickItem = vscode.QuickPickItem & {
-    preset?: IdentityPreset;
-    custom?: boolean;
-    addPreset?: boolean;
-    presetIndex?: number;
-    isSavedPreset?: boolean;
-    recentIndex?: number;
-    isRecentIdentity?: boolean;
-    isCurrentConfigured?: boolean;
-  };
+// --- Picker ---
+
+const pickPresetIdentity = async (current: Identity, repoPath: string): Promise<Identity | undefined> => {
+  const repoTitle = `Git Persona (${path.basename(repoPath)})`;
+
+  const isCurrentIdentity = (identity: Identity): boolean =>
+    current.name.trim() === identity.name &&
+    current.email.trim().toLowerCase() === identity.email.toLowerCase();
 
   const deleteButton: vscode.QuickInputButton = {
     iconPath: new vscode.ThemeIcon('trash'),
@@ -73,80 +99,67 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
     iconPath: new vscode.ThemeIcon('edit'),
     tooltip: 'Edit preset'
   };
+  const itemButtons = [editButton, deleteButton];
 
   const createItems = (): IdentityPickItem[] => {
-    const currentPresets = getConfiguredIdentities();
-    const currentRecent = getRecentIdentities();
-    const nextItems: IdentityPickItem[] = currentPresets.map((preset, index) => {
-      const presetLabel = preset.label?.trim();
-      const isCurrent =
-        current.name.trim() === preset.name &&
-        current.email.trim().toLowerCase() === preset.email.toLowerCase();
-
-      const displayLabel = presetLabel && presetLabel.length > 0 ? presetLabel : `${preset.name} <${preset.email}>`;
+    const configuredIdentities = getConfiguredIdentities();
+    const items: IdentityPickItem[] = configuredIdentities.map((preset, presetIndex) => {
+      const isCurrent = isCurrentIdentity(preset);
+      const displayLabel = presetDisplayLabel(preset);
       return {
         label: isCurrent ? `$(check) ${displayLabel}` : displayLabel,
-        description: presetLabel && presetLabel.length > 0 ? `${preset.name} <${preset.email}>` : undefined,
-        detail: isCurrent ? 'Currently configured for this repository' : undefined,
+        description: preset.label?.trim() ? `${preset.name} <${preset.email}>` : undefined,
+        detail: isCurrent ? CURRENTLY_CONFIGURED_DETAIL : undefined,
         preset,
-        presetIndex: index,
-        isSavedPreset: true,
+        presetIndex,
         isCurrentConfigured: isCurrent,
-        buttons: [editButton, deleteButton]
+        buttons: itemButtons
       };
     });
 
-    const existingKeys = new Set(nextItems.map((item) => identityKey(item.preset!)));
-    for (const [recentIndex, recentIdentity] of currentRecent.entries()) {
-      const key = identityKey(recentIdentity);
-      if (existingKeys.has(key)) {
-        continue;
-      }
+    const presetKeys = new Set(configuredIdentities.map(identityKey));
+    for (const [recentIndex, identity] of getRecentIdentities().entries()) {
+      if (presetKeys.has(identityKey(identity))) continue;
 
-      const isCurrent =
-        current.name.trim() === recentIdentity.name &&
-        current.email.trim().toLowerCase() === recentIdentity.email.toLowerCase();
-
-      nextItems.push({
-        label: isCurrent ? `$(check) Recent: ${recentIdentity.name} <${recentIdentity.email}>` : `Recent: ${recentIdentity.name} <${recentIdentity.email}>`,
-        detail: isCurrent ? 'Currently configured for this repository' : 'From recently used identities',
-        preset: { name: recentIdentity.name, email: recentIdentity.email },
+      const isCurrent = isCurrentIdentity(identity);
+      const baseLabel = `Recent: ${identity.name} <${identity.email}>`;
+      items.push({
+        label: isCurrent ? `$(check) ${baseLabel}` : baseLabel,
+        detail: isCurrent ? CURRENTLY_CONFIGURED_DETAIL : 'From recently used identities',
+        preset: { name: identity.name, email: identity.email },
         recentIndex,
-        isRecentIdentity: true,
         isCurrentConfigured: isCurrent,
-        buttons: [editButton, deleteButton]
+        buttons: itemButtons
       });
     }
 
-    nextItems.push({
+    items.push({
       label: '$(edit) Create one-time identity (this repo only)',
       detail: 'Applies to this repository now, without saving a reusable preset.',
       custom: true
     });
-
-    nextItems.push({
+    items.push({
       label: '$(add) Create reusable identity preset',
       detail: 'Saves to gitPersona.identities so you can reuse and auto-apply it later.',
       addPreset: true
     });
 
-    return nextItems;
+    return items;
   };
 
   const selection = await new Promise<IdentityPickItem | undefined>((resolve) => {
     const quickPick = vscode.window.createQuickPick<IdentityPickItem>();
-    quickPick.title = `Git Persona (${path.basename(repoPath)})`;
+    quickPick.title = repoTitle;
     quickPick.placeholder = 'Choose an identity preset or enter a custom identity';
     quickPick.ignoreFocusOut = true;
     quickPick.items = createItems();
+
     let hasIgnoredInitialSelectionEvent = false;
     let isHandlingItemButton = false;
     let resolved = false;
 
     const disposeAndResolve = (value: IdentityPickItem | undefined): void => {
-      if (resolved) {
-        return;
-      }
+      if (resolved) return;
       resolved = true;
       quickPick.dispose();
       resolve(value);
@@ -158,9 +171,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
 
     quickPick.onDidChangeSelection((items) => {
       const selected = items[0];
-      if (!selected) {
-        return;
-      }
+      if (!selected) return;
 
       if (!hasIgnoredInitialSelectionEvent) {
         hasIgnoredInitialSelectionEvent = true;
@@ -173,142 +184,96 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
     });
 
     quickPick.onDidHide(() => {
-      if (isHandlingItemButton) {
-        return;
+      if (!isHandlingItemButton) {
+        disposeAndResolve(undefined);
       }
-      disposeAndResolve(undefined);
     });
 
     quickPick.onDidTriggerItemButton(async (event) => {
       isHandlingItemButton = true;
       try {
-        if (!event.item.isSavedPreset && !event.item.isRecentIdentity) {
-          isHandlingItemButton = false;
-          return;
-        }
+        const { item, button } = event;
 
-        if (event.item.isSavedPreset && event.item.presetIndex !== undefined) {
-        const allPresets = getConfiguredIdentities();
-        const target = allPresets[event.item.presetIndex];
-        if (!target) {
-          isHandlingItemButton = false;
-          quickPick.show();
-          return;
-        }
+        if (item.presetIndex !== undefined) {
+          const allPresets = getConfiguredIdentities();
+          const target = allPresets[item.presetIndex];
+          if (!target) return;
 
-        if (event.button === editButton) {
-          const edited = await editPresetIdentity(repoPath, target);
-          if (!edited) {
-            isHandlingItemButton = false;
-            quickPick.show();
-            return;
+          if (button === editButton) {
+            const edited = await editPresetIdentity(repoPath, target);
+            if (!edited) return;
+
+            const isDuplicate =
+              allPresets.some((p, i) => i !== item.presetIndex && identityKey(p) === identityKey(edited)) ||
+              getRecentIdentities().some((r) => identityKey(r) === identityKey(edited));
+            if (isDuplicate) {
+              void vscode.window.showWarningMessage(DUPLICATE_IDENTITY_WARNING);
+              return;
+            }
+
+            allPresets[item.presetIndex] = edited;
+            await setConfiguredIdentities(allPresets);
+            void vscode.window.showInformationMessage('Git Persona: preset updated.');
+          } else {
+            const targetLabel = presetDisplayLabel(target);
+            const confirmed = await vscode.window.showWarningMessage(
+              `Delete preset "${targetLabel}"?`,
+              { modal: true },
+              'Delete'
+            );
+            if (confirmed !== 'Delete') return;
+
+            await setConfiguredIdentities(allPresets.filter((_, i) => i !== item.presetIndex));
+
+            const allRecent = getRecentIdentities();
+            const nextRecent = allRecent.filter((r) => identityKey(r) !== identityKey(target));
+            if (nextRecent.length !== allRecent.length) {
+              await setRecentIdentities(nextRecent);
+            }
+
+            void vscode.window.showInformationMessage(`Git Persona: deleted preset "${targetLabel}".`);
           }
 
-          const duplicateIndex = allPresets.findIndex(
-            (preset, index) => index !== event.item.presetIndex && identityKey(preset) === identityKey(edited)
-          );
-          const duplicateRecent = getRecentIdentities().some((recent) => identityKey(recent) === identityKey(edited));
-          if (duplicateIndex !== -1 || duplicateRecent) {
-            void vscode.window.showWarningMessage('Git Persona: an identity preset with that name/email already exists.');
-            isHandlingItemButton = false;
-            quickPick.show();
-            return;
-          }
-
-          allPresets[event.item.presetIndex] = edited;
-          await setConfiguredIdentities(allPresets);
           quickPick.items = createItems();
-          void vscode.window.showInformationMessage('Git Persona: preset updated.');
-          quickPick.show();
           return;
         }
 
-        const targetLabel = target.label?.trim() || `${target.name} <${target.email}>`;
-        const confirmed = await vscode.window.showWarningMessage(
-          `Delete preset "${targetLabel}"?`,
-          { modal: true },
-          'Delete'
-        );
-        if (confirmed !== 'Delete') {
-          isHandlingItemButton = false;
-          quickPick.show();
-          return;
-        }
+        if (item.recentIndex !== undefined) {
+          const allRecent = getRecentIdentities();
+          const target = allRecent[item.recentIndex];
+          if (!target) return;
 
-        const nextPresets = allPresets.filter((_, index) => index !== event.item.presetIndex);
-        await setConfiguredIdentities(nextPresets);
+          if (button === editButton) {
+            const edited = await collectCustomIdentityInputs(target, repoPath);
+            if (!edited) return;
 
-        const deletedKey = identityKey(target);
-        const allRecent = getRecentIdentities();
-        const nextRecent = allRecent.filter((recent) => identityKey(recent) !== deletedKey);
-        if (nextRecent.length !== allRecent.length) {
-          await setRecentIdentities(nextRecent);
-        }
+            const isDuplicate =
+              allRecent.some((r, i) => i !== item.recentIndex && identityKey(r) === identityKey(edited)) ||
+              getConfiguredIdentities().some((p) => identityKey(p) === identityKey(edited));
+            if (isDuplicate) {
+              void vscode.window.showWarningMessage(DUPLICATE_IDENTITY_WARNING);
+              return;
+            }
 
-        quickPick.items = createItems();
-        void vscode.window.showInformationMessage(`Git Persona: deleted preset ${targetLabel}.`);
-        quickPick.show();
-        return;
-      }
+            allRecent[item.recentIndex] = edited;
+            await setRecentIdentities(allRecent);
+            void vscode.window.showInformationMessage('Git Persona: recent identity updated.');
+          } else {
+            const targetLabel = `${target.name} <${target.email}>`;
+            const confirmed = await vscode.window.showWarningMessage(
+              `Delete recent identity "${targetLabel}"?`,
+              { modal: true },
+              'Delete'
+            );
+            if (confirmed !== 'Delete') return;
 
-      if (event.item.isRecentIdentity && event.item.recentIndex !== undefined) {
-        const allRecent = getRecentIdentities();
-        const target = allRecent[event.item.recentIndex];
-        if (!target) {
-          isHandlingItemButton = false;
-          quickPick.show();
-          return;
-        }
-
-        if (event.button === editButton) {
-          const edited = await collectCustomIdentityInputs(target, repoPath);
-          if (!edited) {
-            isHandlingItemButton = false;
-            quickPick.show();
-            return;
+            await setRecentIdentities(allRecent.filter((_, i) => i !== item.recentIndex));
+            void vscode.window.showInformationMessage(`Git Persona: deleted recent identity "${targetLabel}".`);
           }
 
-          const duplicateRecentIndex = allRecent.findIndex(
-            (recent, index) => index !== event.item.recentIndex && identityKey(recent) === identityKey(edited)
-          );
-          const duplicatePreset = getConfiguredIdentities().some((preset) => identityKey(preset) === identityKey(edited));
-          if (duplicateRecentIndex !== -1 || duplicatePreset) {
-            void vscode.window.showWarningMessage('Git Persona: that identity already exists.');
-            isHandlingItemButton = false;
-            quickPick.show();
-            return;
-          }
-
-          allRecent[event.item.recentIndex] = edited;
-          await setRecentIdentities(allRecent);
           quickPick.items = createItems();
-          void vscode.window.showInformationMessage('Git Persona: recent identity updated.');
-          quickPick.show();
-          return;
         }
-
-        const targetLabel = `${target.name} <${target.email}>`;
-        const confirmed = await vscode.window.showWarningMessage(
-          `Delete recent identity "${targetLabel}"?`,
-          { modal: true },
-          'Delete'
-        );
-        if (confirmed !== 'Delete') {
-          isHandlingItemButton = false;
-          quickPick.show();
-          return;
-        }
-
-        const nextRecent = allRecent.filter((_, index) => index !== event.item.recentIndex);
-        await setRecentIdentities(nextRecent);
-        quickPick.items = createItems();
-        void vscode.window.showInformationMessage(`Git Persona: deleted recent identity ${targetLabel}.`);
-        quickPick.show();
-        return;
-      }
-
       } finally {
-        // Always clear so onDidHide can resolve; prevents picker freeze on cancel/early return.
         isHandlingItemButton = false;
         quickPick.show();
       }
@@ -317,170 +282,122 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
     quickPick.show();
   });
 
-  if (!selection || selection.custom) {
-    return selection?.custom ? collectCustomIdentityInputs({ name: '', email: '' }, repoPath) : undefined;
-  }
-
-  if (selection.addPreset) {
-    return addNewPresetIdentity(repoPath);
-  }
-
+  if (!selection) return undefined;
+  if (selection.custom) return collectCustomIdentityInputs(EMPTY_IDENTITY, repoPath);
+  if (selection.addPreset) return addNewPresetIdentity(repoPath);
   return selection.preset;
 };
 
+// --- Identity input helpers ---
+
 const editPresetIdentity = async (repoPath: string, preset: IdentityPreset): Promise<IdentityPreset | undefined> => {
-  const updatedIdentity = await collectCustomIdentityInputs(
-    { name: preset.name, email: preset.email },
-    repoPath
-  );
-  if (!updatedIdentity) {
-    return undefined;
-  }
+  const repoTitle = `Git Persona (${path.basename(repoPath)})`;
+
+  const updatedIdentity = await collectCustomIdentityInputs({ name: preset.name, email: preset.email }, repoPath);
+  if (!updatedIdentity) return undefined;
 
   const label = await vscode.window.showInputBox({
-    title: `Git Persona (${path.basename(repoPath)})`,
+    title: repoTitle,
     prompt: 'Preset label',
     value: preset.label ?? '',
     ignoreFocusOut: true
   });
-  if (label === undefined) {
-    return undefined;
-  }
+  if (label === undefined) return undefined;
 
   const currentMatch = Array.isArray(preset.match) ? preset.match.join(', ') : (preset.match ?? '');
   const matchInput = await vscode.window.showInputBox({
-    title: `Git Persona (${path.basename(repoPath)})`,
+    title: repoTitle,
     prompt: 'Auto-match hints (comma-separated)',
     value: currentMatch,
     ignoreFocusOut: true
   });
-  if (matchInput === undefined) {
-    return undefined;
-  }
-
-  const parsedMatches = matchInput
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  const options = await collectPresetOptionsInputs(repoPath, preset.options);
+  if (matchInput === undefined) return undefined;
 
   return {
     ...updatedIdentity,
-    label: label?.trim() || undefined,
-    match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0],
-    options
+    label: label.trim() || undefined,
+    match: parseMatchInput(matchInput),
+    options: await collectPresetOptionsInputs(repoPath, preset.options)
   };
 };
 
 const collectCustomIdentityInputs = async (current: Identity, repoPath: string): Promise<Identity | undefined> => {
+  const repoTitle = `Git Persona (${path.basename(repoPath)})`;
+
   const name = await vscode.window.showInputBox({
-    title: `Git Persona (${path.basename(repoPath)})`,
+    title: repoTitle,
     prompt: 'Git user.name (local to this repository)',
     value: current.name,
     ignoreFocusOut: true,
     validateInput: (input) => input.trim().length === 0 ? 'Name is required.' : undefined
   });
-  if (!name) {
-    return undefined;
-  }
+  if (!name) return undefined;
 
   const email = await vscode.window.showInputBox({
-    title: `Git Persona (${path.basename(repoPath)})`,
+    title: repoTitle,
     prompt: 'Git user.email (local to this repository)',
     value: current.email,
     ignoreFocusOut: true,
     validateInput: (input) => isValidEmail(input) ? undefined : 'Enter a valid email address.'
   });
-  if (!email) {
-    return undefined;
-  }
+  if (!email) return undefined;
 
   return { name: name.trim(), email: email.trim() };
 };
 
 const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefined> => {
+  const repoTitle = `Git Persona (${path.basename(repoPath)})`;
   const createdPresets: IdentityPreset[] = [];
   const existingKeys = new Set([
-    ...getConfiguredIdentities().map((preset) => identityKey(preset)),
-    ...getRecentIdentities().map((recent) => identityKey(recent))
+    ...getConfiguredIdentities().map(identityKey),
+    ...getRecentIdentities().map(identityKey)
   ]);
 
   while (true) {
-    const created = await collectCustomIdentityInputs({ name: '', email: '' }, repoPath);
-    if (!created) {
-      break;
-    }
+    const created = await collectCustomIdentityInputs(EMPTY_IDENTITY, repoPath);
+    if (!created) break;
 
     const createdKey = identityKey(created);
     if (existingKeys.has(createdKey)) {
-      await vscode.window.showWarningMessage(
-        'Git Persona: that identity already exists.',
-        'Try different values'
-      );
+      await vscode.window.showWarningMessage(DUPLICATE_IDENTITY_WARNING, 'Try different values');
       continue;
     }
 
     const label = await vscode.window.showInputBox({
-      title: `Git Persona (${path.basename(repoPath)})`,
+      title: repoTitle,
       prompt: 'Optional preset label (for example: Work, Personal)',
       ignoreFocusOut: true
     });
 
     const matchInput = await vscode.window.showInputBox({
-      title: `Git Persona (${path.basename(repoPath)})`,
+      title: repoTitle,
       prompt: 'Optional auto-match hints (comma-separated)',
       placeHolder: 'github.com/work-org, /work/, gitlab.company.com',
       ignoreFocusOut: true
     });
 
-    const parsedMatches = (matchInput ?? '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-    const options = await collectPresetOptionsInputs(repoPath);
-
     createdPresets.push({
       ...created,
       label: label?.trim() || undefined,
-      match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0],
-      options
+      match: parseMatchInput(matchInput ?? ''),
+      options: await collectPresetOptionsInputs(repoPath)
     });
     existingKeys.add(createdKey);
 
     const addAnother = await vscode.window.showQuickPick(['Add another preset', 'Finish'], {
-      title: `Git Persona (${path.basename(repoPath)})`,
+      title: repoTitle,
       placeHolder: 'Add more identities now?'
     });
-
-    if (addAnother !== 'Add another preset') {
-      break;
-    }
+    if (addAnother !== 'Add another preset') break;
   }
 
-  if (createdPresets.length === 0) {
-    return undefined;
-  }
+  if (createdPresets.length === 0) return undefined;
 
-  const presets = getConfiguredIdentities();
-  await setConfiguredIdentities([...presets, ...createdPresets]);
-
+  await setConfiguredIdentities([...getConfiguredIdentities(), ...createdPresets]);
   return createdPresets[createdPresets.length - 1];
 };
 
-const toMatchPatterns = (match: string | string[] | undefined): string[] => {
-  if (!match) {
-    return [];
-  }
-
-  if (typeof match === 'string') {
-    const normalized = match.trim().toLowerCase();
-    return normalized.length > 0 ? [normalized] : [];
-  }
-
-  return match
-    .map((item) => item.trim().toLowerCase())
-    .filter((item) => item.length > 0);
-};
+// --- Git config options ---
 
 const GIT_CONFIG_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9.-]*$/;
 
@@ -488,8 +405,8 @@ const collectPresetOptionsInputs = async (
   repoPath: string,
   currentOptions?: GitConfigOptions
 ): Promise<GitConfigOptions | undefined> => {
+  const repoTitle = `Git Persona (${path.basename(repoPath)})`;
   const options: GitConfigOptions = { ...(currentOptions ?? {}) };
-  const title = `Git Persona (${path.basename(repoPath)})`;
 
   while (true) {
     const summary = Object.keys(options).length === 0
@@ -504,24 +421,20 @@ const collectPresetOptionsInputs = async (
     ];
 
     const selected = await vscode.window.showQuickPick(choices, {
-      title,
+      title: repoTitle,
       placeHolder: `Extra git config options. ${summary}`,
       ignoreFocusOut: true
     });
-    if (!selected || selected.value === 'done') {
-      break;
-    }
+    if (!selected || selected.value === 'done') break;
 
     if (selected.value === 'signing') {
       const signingKey = await vscode.window.showInputBox({
-        title,
+        title: repoTitle,
         prompt: 'Git user.signingkey value (leave empty to clear)',
         value: options['user.signingkey'] ?? '',
         ignoreFocusOut: true
       });
-      if (signingKey === undefined) {
-        continue;
-      }
+      if (signingKey === undefined) continue;
 
       const normalized = signingKey.trim();
       if (normalized.length === 0) {
@@ -534,7 +447,7 @@ const collectPresetOptionsInputs = async (
 
     if (selected.value === 'custom') {
       const key = await vscode.window.showInputBox({
-        title,
+        title: repoTitle,
         prompt: 'Git config key (dot-path syntax, e.g. commit.gpgsign)',
         ignoreFocusOut: true,
         validateInput: (input) => {
@@ -545,21 +458,17 @@ const collectPresetOptionsInputs = async (
           return undefined;
         }
       });
-      if (!key) {
-        continue;
-      }
+      if (!key) continue;
 
       const normalizedKey = key.trim();
       const value = await vscode.window.showInputBox({
-        title,
+        title: repoTitle,
         prompt: `Value for ${normalizedKey}`,
         value: options[normalizedKey] ?? '',
         ignoreFocusOut: true,
         validateInput: (input) => input.trim().length === 0 ? 'Value is required.' : undefined
       });
-      if (!value) {
-        continue;
-      }
+      if (!value) continue;
 
       options[normalizedKey] = value.trim();
       continue;
@@ -572,13 +481,11 @@ const collectPresetOptionsInputs = async (
     }
 
     const keyToRemove = await vscode.window.showQuickPick(keys, {
-      title,
+      title: repoTitle,
       placeHolder: 'Select an option to remove',
       ignoreFocusOut: true
     });
-    if (!keyToRemove) {
-      continue;
-    }
+    if (!keyToRemove) continue;
 
     delete options[keyToRemove];
   }
