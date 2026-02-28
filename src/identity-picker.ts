@@ -308,6 +308,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
       }
 
       } finally {
+        // Always clear so onDidHide can resolve; prevents picker freeze on cancel/early return.
         isHandlingItemButton = false;
         quickPick.show();
       }
