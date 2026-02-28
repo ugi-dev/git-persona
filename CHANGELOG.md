@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing yet.
 
+## [1.0.1] – 2025-02-28
+
+### Added
+
+- **Marketplace icon**: Extension icon declared in manifest so it appears on the Visual Studio Marketplace.
+- **Keywords**: Added `keywords` in `package.json` for better discovery (git, identity, commit, author, per-repo, etc.).
+
+### Changed
+
+- **Description**: Tagline updated to “A VS Code extension that lets you customize your commit identity per repository.”
+
 ## [0.0.2] – 2025-02-28
 
 ### Fixed
@@ -41,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **editPresetIdentity**: Handles undefined inputs safely.
 - **Quick pick**: Re-displays correctly when no target is found during identity selection.
 
-[Unreleased]: https://github.com/ugi-dev/git-persona/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/ugi-dev/git-persona/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ugi-dev/git-persona/releases/tag/v1.0.0
 [0.0.2]: https://github.com/ugi-dev/git-persona/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ugi-dev/git-persona/releases/tag/v0.0.1
