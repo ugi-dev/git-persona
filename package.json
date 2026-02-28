@@ -2,7 +2,7 @@
 	"name": "git-persona",
 	"displayName": "Git Persona",
 	"description": "Enforce per-repo git user.name and user.email before you work.",
-	"version": "0.0.4",
+	"version": "0.0.5",
 	"publisher": "ugi-dev",
 	"license": "MIT",
 	"homepage": "https://ugi.dev",
