@@ -83,8 +83,9 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         current.name.trim() === preset.name &&
         current.email.trim().toLowerCase() === preset.email.toLowerCase();
 
+      const displayLabel = presetLabel && presetLabel.length > 0 ? presetLabel : `${preset.name} <${preset.email}>`;
       return {
-        label: presetLabel && presetLabel.length > 0 ? presetLabel : `${preset.name} <${preset.email}>`,
+        label: isCurrent ? `$(check) ${displayLabel}` : displayLabel,
         description: presetLabel && presetLabel.length > 0 ? `${preset.name} <${preset.email}>` : undefined,
         detail: isCurrent ? 'Currently configured for this repository' : undefined,
         preset,
@@ -107,7 +108,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         current.email.trim().toLowerCase() === recentIdentity.email.toLowerCase();
 
       nextItems.push({
-        label: `Recent: ${recentIdentity.name} <${recentIdentity.email}>`,
+        label: isCurrent ? `$(check) Recent: ${recentIdentity.name} <${recentIdentity.email}>` : `Recent: ${recentIdentity.name} <${recentIdentity.email}>`,
         detail: isCurrent ? 'Currently configured for this repository' : 'From recently used identities',
         preset: { name: recentIdentity.name, email: recentIdentity.email },
         recentIndex,
@@ -118,7 +119,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
     }
 
     nextItems.push({
-      label: '$(edit) Use one-time identity (this repo only)',
+      label: '$(edit) Create one-time identity (this repo only)',
       detail: 'Applies to this repository now, without saving a reusable preset.',
       custom: true
     });
@@ -205,7 +206,8 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           const duplicateIndex = allPresets.findIndex(
             (preset, index) => index !== event.item.presetIndex && identityKey(preset) === identityKey(edited)
           );
-          if (duplicateIndex !== -1) {
+          const duplicateRecent = getRecentIdentities().some((recent) => identityKey(recent) === identityKey(edited));
+          if (duplicateIndex !== -1 || duplicateRecent) {
             void vscode.window.showWarningMessage('Git Persona: an identity preset with that name/email already exists.');
             isHandlingItemButton = false;
             quickPick.show();
@@ -389,7 +391,10 @@ const collectCustomIdentityInputs = async (current: Identity, repoPath: string):
 
 const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefined> => {
   const createdPresets: IdentityPreset[] = [];
-  const existingKeys = new Set(getConfiguredIdentities().map((preset) => identityKey(preset)));
+  const existingKeys = new Set([
+    ...getConfiguredIdentities().map((preset) => identityKey(preset)),
+    ...getRecentIdentities().map((recent) => identityKey(recent))
+  ]);
 
   while (true) {
     const created = await collectCustomIdentityInputs({ name: '', email: '' }, repoPath);
@@ -399,7 +404,7 @@ const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefi
 
     const createdKey = identityKey(created);
     if (existingKeys.has(createdKey)) {
-      void vscode.window.showWarningMessage('Git Persona: that identity preset already exists.');
+      void vscode.window.showWarningMessage('Git Persona: that identity already exists. Please enter a different name or email.');
       continue;
     }
 

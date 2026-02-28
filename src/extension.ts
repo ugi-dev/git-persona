@@ -256,7 +256,8 @@ const promptAndApplyIdentity = async (
     status.identity.name.trim() === nextIdentity.name.trim() &&
     status.identity.email.trim().toLowerCase() === nextIdentity.email.trim().toLowerCase();
 
-  if (!isSameIdentity || (options && Object.keys(options).length > 0)) {
+  const hasOptions = Boolean(options && Object.keys(options).length > 0);
+  if (!isSameIdentity || hasOptions) {
     await setRepoIdentity(repoPath, nextIdentity, options);
   }
 
