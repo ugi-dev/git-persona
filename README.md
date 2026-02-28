@@ -1,7 +1,7 @@
 <img src="/cover.png" alt="cover_image"/>
 # Git Persona
 
-Enforce per-repo git `user.name` and `user.email` before you work—no more committing with the wrong identity.
+A VS Code extension that lets you customize your commit identity per repository.
 
 <a href="https://marketplace.visualstudio.com/items?itemName=ugi-dev.git-persona"><strong>Install from Marketplace →</strong></a>
 
