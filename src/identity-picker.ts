@@ -181,16 +181,15 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
 
     quickPick.onDidTriggerItemButton(async (event) => {
       isHandlingItemButton = true;
-      if (!event.item.isSavedPreset && !event.item.isRecentIdentity) {
-        isHandlingItemButton = false;
-        return;
-      }
+      try {
+        if (!event.item.isSavedPreset && !event.item.isRecentIdentity) {
+          return;
+        }
 
-      if (event.item.isSavedPreset && event.item.presetIndex !== undefined) {
+        if (event.item.isSavedPreset && event.item.presetIndex !== undefined) {
         const allPresets = getConfiguredIdentities();
         const target = allPresets[event.item.presetIndex];
         if (!target) {
-          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -198,7 +197,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         if (event.button === editButton) {
           const edited = await editPresetIdentity(repoPath, target);
           if (!edited) {
-            isHandlingItemButton = false;
             quickPick.show();
             return;
           }
@@ -209,7 +207,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           const duplicateRecent = getRecentIdentities().some((recent) => identityKey(recent) === identityKey(edited));
           if (duplicateIndex !== -1 || duplicateRecent) {
             void vscode.window.showWarningMessage('Git Persona: an identity preset with that name/email already exists.');
-            isHandlingItemButton = false;
             quickPick.show();
             return;
           }
@@ -218,7 +215,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           await setConfiguredIdentities(allPresets);
           quickPick.items = createItems();
           void vscode.window.showInformationMessage('Git Persona: preset updated.');
-          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -230,7 +226,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           'Delete'
         );
         if (confirmed !== 'Delete') {
-          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -239,7 +234,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         await setConfiguredIdentities(nextPresets);
         quickPick.items = createItems();
         void vscode.window.showInformationMessage(`Git Persona: deleted preset ${targetLabel}.`);
-        isHandlingItemButton = false;
         quickPick.show();
         return;
       }
@@ -248,7 +242,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         const allRecent = getRecentIdentities();
         const target = allRecent[event.item.recentIndex];
         if (!target) {
-          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -256,7 +249,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         if (event.button === editButton) {
           const edited = await collectCustomIdentityInputs(target, repoPath);
           if (!edited) {
-            isHandlingItemButton = false;
             quickPick.show();
             return;
           }
@@ -267,7 +259,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           const duplicatePreset = getConfiguredIdentities().some((preset) => identityKey(preset) === identityKey(edited));
           if (duplicateRecentIndex !== -1 || duplicatePreset) {
             void vscode.window.showWarningMessage('Git Persona: that identity already exists.');
-            isHandlingItemButton = false;
             quickPick.show();
             return;
           }
@@ -276,7 +267,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           await setRecentIdentities(allRecent);
           quickPick.items = createItems();
           void vscode.window.showInformationMessage('Git Persona: recent identity updated.');
-          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -288,7 +278,6 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
           'Delete'
         );
         if (confirmed !== 'Delete') {
-          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -297,12 +286,14 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         await setRecentIdentities(nextRecent);
         quickPick.items = createItems();
         void vscode.window.showInformationMessage(`Git Persona: deleted recent identity ${targetLabel}.`);
-        isHandlingItemButton = false;
         quickPick.show();
         return;
       }
 
-      isHandlingItemButton = false;
+      } finally {
+        isHandlingItemButton = false;
+        quickPick.show();
+      }
     });
 
     quickPick.show();
@@ -404,7 +395,10 @@ const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefi
 
     const createdKey = identityKey(created);
     if (existingKeys.has(createdKey)) {
-      void vscode.window.showWarningMessage('Git Persona: that identity already exists. Please enter a different name or email.');
+      await vscode.window.showWarningMessage(
+        'Git Persona: that identity already exists.',
+        'Try different values'
+      );
       continue;
     }
 
