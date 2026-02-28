@@ -322,6 +322,9 @@ const editPresetIdentity = async (repoPath: string, preset: IdentityPreset): Pro
     value: preset.label ?? '',
     ignoreFocusOut: true
   });
+  if (label === undefined) {
+    return undefined;
+  }
 
   const currentMatch = Array.isArray(preset.match) ? preset.match.join(', ') : (preset.match ?? '');
   const matchInput = await vscode.window.showInputBox({
@@ -330,8 +333,11 @@ const editPresetIdentity = async (repoPath: string, preset: IdentityPreset): Pro
     value: currentMatch,
     ignoreFocusOut: true
   });
+  if (matchInput === undefined) {
+    return undefined;
+  }
 
-  const parsedMatches = (matchInput ?? '')
+  const parsedMatches = matchInput
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
