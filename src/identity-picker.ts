@@ -190,6 +190,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         const allPresets = getConfiguredIdentities();
         const target = allPresets[event.item.presetIndex];
         if (!target) {
+          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -197,6 +198,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         if (event.button === editButton) {
           const edited = await editPresetIdentity(repoPath, target);
           if (!edited) {
+            isHandlingItemButton = false;
             quickPick.show();
             return;
           }
@@ -232,6 +234,14 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
 
         const nextPresets = allPresets.filter((_, index) => index !== event.item.presetIndex);
         await setConfiguredIdentities(nextPresets);
+
+        const deletedKey = identityKey(target);
+        const allRecent = getRecentIdentities();
+        const nextRecent = allRecent.filter((recent) => identityKey(recent) !== deletedKey);
+        if (nextRecent.length !== allRecent.length) {
+          await setRecentIdentities(nextRecent);
+        }
+
         quickPick.items = createItems();
         void vscode.window.showInformationMessage(`Git Persona: deleted preset ${targetLabel}.`);
         quickPick.show();
@@ -242,6 +252,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         const allRecent = getRecentIdentities();
         const target = allRecent[event.item.recentIndex];
         if (!target) {
+          isHandlingItemButton = false;
           quickPick.show();
           return;
         }
@@ -249,6 +260,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
         if (event.button === editButton) {
           const edited = await collectCustomIdentityInputs(target, repoPath);
           if (!edited) {
+            isHandlingItemButton = false;
             quickPick.show();
             return;
           }
