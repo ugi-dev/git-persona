@@ -2,7 +2,7 @@
 	"name": "git-persona",
 	"displayName": "Git Persona",
 	"description": "A VS Code extension that lets you customize your commit identity per repository.",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"publisher": "ugi-dev",
 	"license": "MIT",
 	"homepage": "https://ugi.dev",
