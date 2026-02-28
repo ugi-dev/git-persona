@@ -282,7 +282,7 @@ const tryAutoApplyIdentity = async (repoPath: string, status: RepoStatus): Promi
   const isSame =
     status.identity.name.trim() === preset.name &&
     status.identity.email.trim().toLowerCase() === preset.email.toLowerCase();
-  if (isSame && status.validDomain) {
+  if (isSame) {
     return true;
   }
 
