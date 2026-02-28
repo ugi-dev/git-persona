@@ -252,9 +252,18 @@ const promptAndApplyIdentity = async (
   }
 
   const options = (nextIdentity as IdentityPreset).options;
-  await setRepoIdentity(repoPath, nextIdentity, options);
+  const isSameIdentity =
+    status.identity.name.trim() === nextIdentity.name.trim() &&
+    status.identity.email.trim().toLowerCase() === nextIdentity.email.trim().toLowerCase();
+
+  if (!isSameIdentity || (options && Object.keys(options).length > 0)) {
+    await setRepoIdentity(repoPath, nextIdentity, options);
+  }
+
+  const savedStatus = await getRepoStatus(repoPath);
+  const actionLabel = isSameIdentity ? 'identity selected' : 'identity saved';
   void vscode.window.showInformationMessage(
-    `Git Persona: identity saved for ${repoName}: ${nextIdentity.name} <${nextIdentity.email}>.`
+    `Git Persona: ${actionLabel} for ${repoName}: ${savedStatus.identity.name} <${savedStatus.identity.email}>.`
   );
   return true;
 };

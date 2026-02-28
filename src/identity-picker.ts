@@ -12,12 +12,7 @@ import {
 import type { GitConfigOptions, Identity, IdentityPreset } from './types';
 
 export const collectIdentityInputs = async (current: Identity, repoPath: string): Promise<Identity | undefined> => {
-  const picked = await pickPresetIdentity(repoPath, current);
-  if (picked) {
-    return picked;
-  }
-
-  return collectCustomIdentityInputs(current, repoPath);
+  return pickPresetIdentity(repoPath, current);
 };
 
 export const findBestPresetMatch = async (repoPath: string): Promise<IdentityPreset | undefined> => {
@@ -58,13 +53,7 @@ export const findBestPresetMatch = async (repoPath: string): Promise<IdentityPre
   return presets.length === 1 ? presets[0] : undefined;
 };
 
-const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<IdentityPreset | undefined> => {
-  const presets = getConfiguredIdentities();
-  const recent = getRecentIdentities();
-  if (presets.length === 0 && recent.length === 0) {
-    return undefined;
-  }
-
+const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<Identity | undefined> => {
   type IdentityPickItem = vscode.QuickPickItem & {
     preset?: IdentityPreset;
     custom?: boolean;
@@ -213,6 +202,16 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
             return;
           }
 
+          const duplicateIndex = allPresets.findIndex(
+            (preset, index) => index !== event.item.presetIndex && identityKey(preset) === identityKey(edited)
+          );
+          if (duplicateIndex !== -1) {
+            void vscode.window.showWarningMessage('Git Persona: an identity preset with that name/email already exists.');
+            isHandlingItemButton = false;
+            quickPick.show();
+            return;
+          }
+
           allPresets[event.item.presetIndex] = edited;
           await setConfiguredIdentities(allPresets);
           quickPick.items = createItems();
@@ -260,6 +259,17 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
             return;
           }
 
+          const duplicateRecentIndex = allRecent.findIndex(
+            (recent, index) => index !== event.item.recentIndex && identityKey(recent) === identityKey(edited)
+          );
+          const duplicatePreset = getConfiguredIdentities().some((preset) => identityKey(preset) === identityKey(edited));
+          if (duplicateRecentIndex !== -1 || duplicatePreset) {
+            void vscode.window.showWarningMessage('Git Persona: that identity already exists.');
+            isHandlingItemButton = false;
+            quickPick.show();
+            return;
+          }
+
           allRecent[event.item.recentIndex] = edited;
           await setRecentIdentities(allRecent);
           quickPick.items = createItems();
@@ -297,7 +307,7 @@ const pickPresetIdentity = async (repoPath: string, current: Identity): Promise<
   });
 
   if (!selection || selection.custom) {
-    return undefined;
+    return selection?.custom ? collectCustomIdentityInputs({ name: '', email: '' }, repoPath) : undefined;
   }
 
   if (selection.addPreset) {
@@ -379,11 +389,18 @@ const collectCustomIdentityInputs = async (current: Identity, repoPath: string):
 
 const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefined> => {
   const createdPresets: IdentityPreset[] = [];
+  const existingKeys = new Set(getConfiguredIdentities().map((preset) => identityKey(preset)));
 
   while (true) {
     const created = await collectCustomIdentityInputs({ name: '', email: '' }, repoPath);
     if (!created) {
       break;
+    }
+
+    const createdKey = identityKey(created);
+    if (existingKeys.has(createdKey)) {
+      void vscode.window.showWarningMessage('Git Persona: that identity preset already exists.');
+      continue;
     }
 
     const label = await vscode.window.showInputBox({
@@ -411,6 +428,7 @@ const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefi
       match: parsedMatches.length > 1 ? parsedMatches : parsedMatches[0],
       options
     });
+    existingKeys.add(createdKey);
 
     const addAnother = await vscode.window.showQuickPick(['Add another preset', 'Finish'], {
       title: `Git Persona (${path.basename(repoPath)})`,
@@ -427,13 +445,9 @@ const addNewPresetIdentity = async (repoPath: string): Promise<Identity | undefi
   }
 
   const presets = getConfiguredIdentities();
-  const existingKeys = new Set(presets.map((preset) => identityKey(preset)));
-  const deduped = createdPresets.filter((preset) => !existingKeys.has(identityKey(preset)));
-  if (deduped.length > 0) {
-    await setConfiguredIdentities([...presets, ...deduped]);
-  }
+  await setConfiguredIdentities([...presets, ...createdPresets]);
 
-  return createdPresets[0];
+  return createdPresets[createdPresets.length - 1];
 };
 
 const toMatchPatterns = (match: string | string[] | undefined): string[] => {
