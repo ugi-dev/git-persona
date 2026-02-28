@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing yet.
 
+## [1.0.3] – 2025-02-28
+
+### Added
+
+- **Open VSX Registry**: Extension can be published to [open-vsx.org](https://open-vsx.org); README documents one-time setup and `ovsx publish` steps.
+- **vscode:prepublish**: `package.json` now includes a prepublish script so `npm run build` runs automatically when packaging (e.g. for `ovsx publish` and `vsce package`).
+
 ## [1.0.1] – 2025-02-28
 
 ### Added
@@ -52,7 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **editPresetIdentity**: Handles undefined inputs safely.
 - **Quick pick**: Re-displays correctly when no target is found during identity selection.
 
-[Unreleased]: https://github.com/ugi-dev/git-persona/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/ugi-dev/git-persona/releases/tag/v1.0.0
+[Unreleased]: https://github.com/ugi-dev/git-persona/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/ugi-dev/git-persona/releases/tag/v1.0.3
+[1.0.1]: https://github.com/ugi-dev/git-persona/releases/tag/v1.0.1
 [0.0.2]: https://github.com/ugi-dev/git-persona/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ugi-dev/git-persona/releases/tag/v0.0.1

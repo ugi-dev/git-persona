@@ -134,6 +134,10 @@ const pickPresetIdentity = async (current: Identity, repoPath: string): Promise<
     }
 
     items.push({
+      label: 'Actions',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+    items.push({
       label: '$(edit) Create one-time identity (this repo only)',
       detail: 'Applies to this repository now, without saving a reusable preset.',
       custom: true
